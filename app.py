@@ -147,6 +147,13 @@ def prepare_nutrition(df: pd.DataFrame) -> tuple[pd.DataFrame, str | None]:
         daily["Protein Avg"] = daily["Protein"].rolling(7, min_periods=1).mean()
     return daily, None
 
+def estimate_1rm(weight: float, reps: float) -> float:
+    if reps == 1:
+        return weight
+    elif reps <= 10:
+        return weight * 36 / (37 - reps)
+    else:
+        return weight * (1 + reps / 30)
 
 def prepare_workouts(df: pd.DataFrame) -> tuple[pd.DataFrame, str | None]:
     date_col = find_column(df, ["Date"])
@@ -181,8 +188,10 @@ def prepare_workouts(df: pd.DataFrame) -> tuple[pd.DataFrame, str | None]:
 
     prepared = prepared.dropna(subset=["Date", "Exercise", "Weight"]).sort_values("Date")
     prepared["Exercise"] = prepared["Exercise"].astype(str).str.strip()
+    prepared = prepared[prepared["Weight"] >= 20]
     prepared["Volume"] = prepared["Weight"] * prepared["Reps"]
-    prepared["Estimated 1RM"] = prepared["Weight"] * (1 + (prepared["Reps"] / 30))
+    prepared["Estimated 1RM"] = prepared.apply(lambda r: estimate_1rm(r["Weight"], r["Reps"]) if r["Reps"] <= 10 else np.nan,
+    axis=1)
 
     if prepared.empty:
         return pd.DataFrame(), "Workout data could not be parsed."
@@ -223,6 +232,8 @@ def build_projection(df: pd.DataFrame, value_col: str, periods: int, freq: str =
         return pd.DataFrame()
 
     slope, intercept = np.polyfit(ordered["DaysFromStart"], ordered[value_col], 1)
+    slope = max(slope, 0)  # never project downward — flat is the minimum
+
     future_offsets = np.arange(1, periods + 1, dtype=float)
     last_offset = ordered["DaysFromStart"].iloc[-1]
     future_days = last_offset + future_offsets
@@ -275,6 +286,10 @@ def find_compound_data(workouts: pd.DataFrame, aliases: list[str]) -> pd.DataFra
     )
     return workouts[mask].copy()
 
+def filter_outliers(df: pd.DataFrame, col: str) -> pd.DataFrame:
+    mean = df[col].rolling(10, min_periods=3, center=True).mean()
+    std  = df[col].rolling(10, min_periods=3, center=True).std().fillna(df[col].std())
+    return df[(df[col] - mean).abs() <= 2 * std]
 
 def build_compound_summary(workouts: pd.DataFrame) -> pd.DataFrame:
     rows: list[dict[str, float | str | pd.Timestamp]] = []
@@ -284,13 +299,18 @@ def build_compound_summary(workouts: pd.DataFrame) -> pd.DataFrame:
             continue
 
         best_by_day = movement_data.groupby("Date", as_index=False)["Estimated 1RM"].max()
-        forecast = build_projection(best_by_day, "Estimated 1RM", periods=30)
-        projected_value = forecast["Estimated 1RM"].iloc[-1] if not forecast.empty else np.nan
+        best_by_day = filter_outliers(best_by_day, "Estimated 1RM")
+        recent_for_projection = filter_timeframe(best_by_day, 60)
+        forecast = build_projection(recent_for_projection, "Estimated 1RM", periods=30)
+        current = best_by_day["Estimated 1RM"].iloc[-1]
+        projected_raw = forecast["Estimated 1RM"].iloc[-1] if not forecast.empty else np.nan
+        projected_value = max(projected_raw, current) if not pd.isna(projected_raw) else np.nan
+
 
         rows.append(
             {
                 "Lift": label,
-                "Current e1RM": best_by_day["Estimated 1RM"].iloc[-1],
+                "Current e1RM": recent_for_projection["Estimated 1RM"].max(),
                 "30-Day Projection": projected_value,
                 "Sessions": movement_data["Date"].dt.date.nunique(),
             }
@@ -521,7 +541,9 @@ else:
                     continue
 
                 best_by_day = movement_data.groupby("Date", as_index=False)["Estimated 1RM"].max()
-                lift_projection = build_projection(best_by_day, "Estimated 1RM", periods=forecast_days)
+                best_by_day = filter_outliers(best_by_day, "Estimated 1RM")  
+                recent_for_projection = filter_timeframe(best_by_day, 60)  # only use last 60 days
+                lift_projection = build_projection(recent_for_projection, "Estimated 1RM", periods=forecast_days)
                 lift_fig = add_actual_and_projection(go.Figure(), best_by_day, lift_projection, "Estimated 1RM", lift_name)
                 lift_fig.update_layout(title=f"{lift_name} e1RM", yaxis_title="Estimated 1RM")
                 st.plotly_chart(lift_fig, use_container_width=True)
