@@ -34,6 +34,20 @@ TIMEFRAME_DAYS = {
     "All Time": None,
 }
 
+SLEEP_FILE = "sleep.csv"
+
+def load_sleep() -> pd.DataFrame:
+    path = Path(SLEEP_FILE)
+    if path.exists():
+        return pd.read_csv(path, parse_dates=["Date"])
+    return pd.DataFrame(columns=["Date", "Hours"])
+
+def save_sleep(date: str, hours: float) -> None:
+    df = load_sleep()
+    df["Date"] = pd.to_datetime(df["Date"])
+    new_row = pd.DataFrame([{"Date": pd.to_datetime(date), "Hours": hours}])
+    df = pd.concat([df[df["Date"] != pd.to_datetime(date)], new_row])
+    df.sort_values("Date").to_csv(SLEEP_FILE, index=False)
 
 def clean_columns(df: pd.DataFrame) -> pd.DataFrame:
     cleaned = df.copy()
@@ -147,6 +161,7 @@ def prepare_nutrition(df: pd.DataFrame) -> tuple[pd.DataFrame, str | None]:
         daily["Protein Avg"] = daily["Protein"].rolling(7, min_periods=1).mean()
     return daily, None
 
+
 def estimate_1rm(weight: float, reps: float) -> float:
     if reps == 1:
         return weight
@@ -221,7 +236,7 @@ def estimate_change(df: pd.DataFrame, value_col: str, days: int | None) -> float
     return float(sliced[value_col].iloc[-1] - sliced[value_col].iloc[0])
 
 
-def build_projection(df: pd.DataFrame, value_col: str, periods: int, freq: str = "D") -> pd.DataFrame:
+def build_projection(df: pd.DataFrame, value_col: str, periods: int, freq: str = "D", floor_slope: bool = False) -> pd.DataFrame:
     if df.empty or len(df) < 2:
         return pd.DataFrame()
 
@@ -232,7 +247,8 @@ def build_projection(df: pd.DataFrame, value_col: str, periods: int, freq: str =
         return pd.DataFrame()
 
     slope, intercept = np.polyfit(ordered["DaysFromStart"], ordered[value_col], 1)
-    slope = max(slope, 0)  # never project downward — flat is the minimum
+    if floor_slope:
+        slope = max(slope, 0)  # only used for lifts — never project downward
 
     future_offsets = np.arange(1, periods + 1, dtype=float)
     last_offset = ordered["DaysFromStart"].iloc[-1]
@@ -291,6 +307,48 @@ def filter_outliers(df: pd.DataFrame, col: str) -> pd.DataFrame:
     std  = df[col].rolling(10, min_periods=3, center=True).std().fillna(df[col].std())
     return df[(df[col] - mean).abs() <= 2 * std]
 
+def detect_sleep_fatigue(sleep_df: pd.DataFrame) -> dict | None:
+    if sleep_df.empty or len(sleep_df) < 3:
+        return None
+
+    sleep_df = sleep_df.copy()
+    sleep_df["Date"] = pd.to_datetime(sleep_df["Date"])
+    sleep_df = sleep_df.sort_values("Date")
+
+    recent_avg = sleep_df["Hours"].tail(3).mean()
+    baseline   = sleep_df["Hours"].tail(14).mean()
+    deficit    = recent_avg - baseline
+
+    # Performance impact based on sleep research:
+    # <6h = ~3% drop, <7h = ~1-2% drop, >8h = slight boost
+    if recent_avg < 6:
+        perf_impact = -3.0
+        status = "High Fatigue — under 6h recently"
+    elif recent_avg < 7:
+        perf_impact = -2.0
+        status = "Elevated Fatigue — sleeping less than usual"
+    elif recent_avg < 7.5:
+        perf_impact = -1.0
+        status = "Moderate — aim for 7.5h+"
+    elif recent_avg >= 8.5:
+        perf_impact = +1.5
+        status = "Well Rested — slight performance boost expected"
+    else:
+        perf_impact = 0.0
+        status = "Well Rested"
+
+    # Additional penalty if trending worse than baseline
+    if deficit < -1.5:
+        perf_impact -= 1.0
+
+    return {
+        "status": status,
+        "recent_avg": recent_avg,
+        "baseline": baseline,
+        "deficit": deficit,
+        "perf_impact": perf_impact,
+    }
+
 def build_compound_summary(workouts: pd.DataFrame) -> pd.DataFrame:
     rows: list[dict[str, float | str | pd.Timestamp]] = []
     for label, aliases in COMPOUND_MOVEMENTS.items():
@@ -301,7 +359,7 @@ def build_compound_summary(workouts: pd.DataFrame) -> pd.DataFrame:
         best_by_day = movement_data.groupby("Date", as_index=False)["Estimated 1RM"].max()
         best_by_day = filter_outliers(best_by_day, "Estimated 1RM")
         recent_for_projection = filter_timeframe(best_by_day, 60)
-        forecast = build_projection(recent_for_projection, "Estimated 1RM", periods=30)
+        forecast = build_projection(recent_for_projection, "Estimated 1RM", periods=30, floor_slope=True)
         current = best_by_day["Estimated 1RM"].iloc[-1]
         projected_raw = forecast["Estimated 1RM"].iloc[-1] if not forecast.empty else np.nan
         projected_value = max(projected_raw, current) if not pd.isna(projected_raw) else np.nan
@@ -517,6 +575,56 @@ else:
         macro_fig.update_layout(margin=dict(l=12, r=12, t=60, b=12), hovermode="x unified")
         st.plotly_chart(macro_fig, use_container_width=True)
 
+st.subheader("Sleep")
+sleep_data = load_sleep()
+
+sleep_col1, sleep_col2 = st.columns([1, 2])
+
+with sleep_col1:
+    sleep_date = st.date_input("Date", value=pd.Timestamp.today().date())
+    sleep_hours = st.number_input("Hours slept", min_value=0.0, max_value=24.0, value=8.0, step=0.5)
+    if st.button("Save"):
+        save_sleep(str(sleep_date), sleep_hours)
+        st.success(f"Saved {sleep_hours}h for {sleep_date}")
+        sleep_data = load_sleep()
+
+with sleep_col2:
+    if not sleep_data.empty:
+        avg_7d = sleep_data.tail(7)["Hours"].mean()
+        st.metric("7-Day Avg Sleep", f"{avg_7d:.1f} hrs")
+        sleep_fig = px.line(
+            sleep_data.sort_values("Date"),
+            x="Date",
+            y="Hours",
+            markers=True,
+            template="plotly_white",
+            title="Sleep Trend",
+        )
+        sleep_fig.add_hline(y=8, line_dash="dot", line_color="#15803d", annotation_text="8h goal")
+        sleep_fig.update_layout(margin=dict(l=12, r=12, t=60, b=12))
+        st.plotly_chart(sleep_fig, use_container_width=True)
+
+st.subheader("Sleep Fatigue")
+fatigue_from_sleep = detect_sleep_fatigue(sleep_data)
+if fatigue_from_sleep is None:
+    st.info("Log at least 3 nights of sleep to see fatigue status.")
+else:
+    sf1, sf2, sf3, sf4 = st.columns(4)
+    with sf1:
+        st.metric("Status", fatigue_from_sleep["status"])
+    with sf2:
+        st.metric("Avg (Last 3 nights)", f"{fatigue_from_sleep['recent_avg']:.1f} hrs")
+    with sf3:
+        st.metric("vs 2-Week Baseline", f"{fatigue_from_sleep['deficit']:+.1f} hrs")
+    with sf4:
+        impact = fatigue_from_sleep["perf_impact"]
+        label = "Today's Lift Impact"
+        if impact > 0:
+            st.metric(label, f"+{impact:.1f}%", "above normal")
+        elif impact < 0:
+            st.metric(label, f"{impact:.1f}%", "below normal")
+        else:
+            st.metric(label, "±0%", "no impact expected")
 
 st.subheader("Compound Lift Projections")
 if workout_error and workout_data.empty:
@@ -543,7 +651,7 @@ else:
                 best_by_day = movement_data.groupby("Date", as_index=False)["Estimated 1RM"].max()
                 best_by_day = filter_outliers(best_by_day, "Estimated 1RM")  
                 recent_for_projection = filter_timeframe(best_by_day, 60)  # only use last 60 days
-                lift_projection = build_projection(recent_for_projection, "Estimated 1RM", periods=forecast_days)
+                lift_projection = build_projection(recent_for_projection, "Estimated 1RM", periods=forecast_days, floor_slope=True)
                 lift_fig = add_actual_and_projection(go.Figure(), best_by_day, lift_projection, "Estimated 1RM", lift_name)
                 lift_fig.update_layout(title=f"{lift_name} e1RM", yaxis_title="Estimated 1RM")
                 st.plotly_chart(lift_fig, use_container_width=True)
