@@ -304,15 +304,37 @@ st.markdown(
     .stApp {
         background:
             radial-gradient(circle at top left, rgba(20, 184, 166, 0.12), transparent 32%),
+            radial-gradient(circle at top right, rgba(249, 115, 22, 0.12), transparent 28%);
+    }
+
+    [data-theme="light"] .stApp {
+        background-image:
+            radial-gradient(circle at top left, rgba(20, 184, 166, 0.12), transparent 32%),
             radial-gradient(circle at top right, rgba(249, 115, 22, 0.12), transparent 28%),
             linear-gradient(180deg, #f4fbf9 0%, #fffaf4 100%);
     }
+
+    [data-theme="dark"] .stApp {
+        background-image:
+            radial-gradient(circle at top left, rgba(20, 184, 166, 0.08), transparent 32%),
+            radial-gradient(circle at top right, rgba(249, 115, 22, 0.08), transparent 28%),
+            linear-gradient(180deg, #0f1117 0%, #1a1a2e 100%);
+    }
+
     div[data-testid="stMetric"] {
-        background: rgba(255, 255, 255, 0.8);
-        border: 1px solid rgba(15, 118, 110, 0.12);
         border-radius: 18px;
         padding: 0.75rem 1rem;
         box-shadow: 0 12px 30px rgba(15, 23, 42, 0.05);
+    }
+
+    [data-theme="light"] div[data-testid="stMetric"] {
+        background: rgba(255, 255, 255, 0.8);
+        border: 1px solid rgba(15, 118, 110, 0.12);
+    }
+
+    [data-theme="dark"] div[data-testid="stMetric"] {
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid rgba(20, 184, 166, 0.2);
     }
     </style>
     """,
