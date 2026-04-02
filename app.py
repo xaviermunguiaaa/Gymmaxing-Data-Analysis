@@ -153,7 +153,7 @@ def prepare_workouts(df: pd.DataFrame) -> tuple[pd.DataFrame, str | None]:
     exercise_col = find_column(df, ["Exercise Name", "Exercise"])
     weight_col = find_column(df, ["Weight", "Weight (lb)", "Weight (kg)"])
     reps_col = find_column(df, ["Reps", "Rep"])
-    set_order_col = find_column(df, ["Set Order"])
+    set_order_col = find_column(df, ["SetOrder"])
 
     if not date_col or not exercise_col or not weight_col:
         return pd.DataFrame(), "Workout data needs date, exercise, and weight columns."
@@ -369,6 +369,23 @@ selected_days = TIMEFRAME_DAYS[timeframe_label]
 weight_view = filter_timeframe(weight_data, selected_days)
 nutrition_view = filter_timeframe(nutrition_data, selected_days)
 
+st.subheader("Weight Change")
+wc1, wc2, wc3, wc4 = st.columns(4)
+
+with wc1:
+    week_val = estimate_change(weight_data, "Weight", 7)
+    st.metric("Week", "Not enough data" if week_val is None else f"{week_val:+.1f}")
+
+with wc2:
+    month_val = estimate_change(weight_data, "Weight", 30)
+    st.metric("Month", "Not enough data" if month_val is None else f"{month_val:+.1f}")
+
+with wc3:
+   all_val = estimate_change(weight_data, "Weight", None)
+   st.metric("All Time", "Not enough data" if all_val is None else f"{all_val:+.1f}")
+
+with wc4:
+    st.empty()
 
 top_col1, top_col2, top_col3, top_col4 = st.columns(4)
 
@@ -398,22 +415,6 @@ with top_col4:
         st.metric("Volume (7d)", f"{recent_volume:,.0f}")
     else:
         st.metric("Volume (7d)", "No data")
-
-
-st.subheader("Weight Change")
-weight_metric_cols = st.columns(3)
-weight_changes = [
-    ("Week", estimate_change(weight_data, "Weight", 7)),
-    ("Month", estimate_change(weight_data, "Weight", 30)),
-    ("All Time", estimate_change(weight_data, "Weight", None)),
-]
-
-for column, (label, value) in zip(weight_metric_cols, weight_changes):
-    with column:
-        if value is None:
-            st.metric(label, "Not enough data")
-        else:
-            st.metric(label, f"{value:+.1f}")
 
 if weight_error and weight_data.empty:
     st.warning(weight_error)
