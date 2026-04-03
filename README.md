@@ -1,3 +1,22 @@
-run " python -m streamlit run app.py " in the terminal to run the dashboard
-requires numpy, pandas, plotly.express, plotly.graphs_objects, and streamlit
-gym dashboard project prototype
+Gym Progress Dashboard
+
+Track your weight, nutrition, workouts, and sleep with charts and simple projections.
+
+Features
+Weight trends, goal tracking, and 7-day averages
+Calories and macro trends with 7-day averages
+Workout volume and estimated 1RM for lifts
+Sleep logging and fatigue detection
+Interactive charts and metrics
+Setup
+
+Install required packages:
+
+pip install numpy pandas plotly streamlit
+
+Place your CSV files (weight.csv, cronometer.csv, strong.csv) in the project folder or upload in the sidebar.
+
+Run
+python -m streamlit run app.py
+Projections show trends, not guarantees.
+Sleep fatigue requires at least 3 nights of logs.
