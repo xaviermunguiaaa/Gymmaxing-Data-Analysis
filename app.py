@@ -336,7 +336,7 @@ def add_actual_and_projection(fig: go.Figure, actual_df: pd.DataFrame, projectio
             y=actual_df[value_col],         # Y-axis: actual values
             mode="lines+markers",           # Show both line and markers
             name=actual_name,               # Name of actual data in legend
-            line=dict(color="#0f766e", width=3),  # Style: dark teal line, width 3
+            line=dict(color="#FF6961", width=3),  # Style: dark teal line, width 3
         )
     )
     # Add trace for projected data if it exists
@@ -521,7 +521,7 @@ with st.sidebar:
     # Dropdown to select default chart range (week, month, all time)
     timeframe_label = st.selectbox("Default chart range", list(TIMEFRAME_DAYS.keys()), index=1)
     # Slider to select how many days to project into the future
-    forecast_days = st.slider("Projection length (days)", min_value=14, max_value=90, value=30, step=7)
+    forecast_days = st.slider("Projection length (days)", min_value=14, max_value=365, value=30, step=7)
     # Captions explaining default filenames
     st.caption("Default filenames: `weight.csv`, `cronometer.csv`, and `strong.csv`.")
     st.caption("Your sample desktop exports are also used automatically when available.")
@@ -641,6 +641,18 @@ else:
     weight_fig.update_layout(title=f"Bodyweight Trend ({timeframe_label})", yaxis_title="Weight")
     st.plotly_chart(weight_fig, use_container_width=True)
 
+# Add an expander section to explain that updating the projection length (days) based on the goal weight
+# can help visualize when the user might reach their goal if current trends continue.
+#  Emphasize that these are just projections based on past data.
+with st.expander("How the projection length (days) works"):
+    # General explanation of projection length (days)
+    st.write(
+        "These projections use a simple line fitted to **your** historical trend based on when you *might* reach your goal weight."
+    )
+    st.write(
+        "They are useful for seeing direction and pace, not as **guaranteed** outcomes. Please take these projections with a grain of salt"
+    )
+
 # Diet section
 st.subheader("Diet")
 if nutrition_error and nutrition_data.empty:
@@ -667,7 +679,7 @@ else:
                 y=nutrition_data["Calorie Avg"],
                 mode="lines",
                 name="7-Day Avg",
-                line=dict(color="#9333ea", width=2),
+                line=dict(color="#FFAE42", width=2),
             )
         )
         calories_fig.update_layout(title=f"Calories ({timeframe_label})", yaxis_title="Calories")
@@ -814,10 +826,10 @@ else:
                 x="Date",
                 y="Weight",
                 markers=True,
-                template="plotly_white",
+                template="ggplot2",
                 title=f"{selected_exercise} Top Set Weight",
             )
-            detail_fig.update_layout(margin=dict(l=12, r=12, t=60, b=12), hovermode="x unified")
+            detail_fig.update_layout(margin=dict(l=12, r=12, t=60, b=16), hovermode="x unified")
             st.plotly_chart(detail_fig, use_container_width=True)
 
         with detail_col2:
@@ -826,10 +838,10 @@ else:
                 volume_by_day,
                 x="Date",
                 y="Volume",
-                template="plotly_white",
+                template="ggplot2",
                 title=f"{selected_exercise} Volume",
             )
-            volume_fig.update_layout(margin=dict(l=12, r=12, t=60, b=12))
+            volume_fig.update_layout(margin=dict(l=16, r=16, t=60, b=16))
             st.plotly_chart(volume_fig, use_container_width=True)
 
         # Show raw table of recent 25 exercise entries
@@ -842,11 +854,16 @@ else:
 with st.expander("How the predictions work"):
     # General explanation of projections
     st.write(
-        "These projections use a simple line fitted to your historical trend. "
-        "They are useful for seeing direction and pace, not as guaranteed outcomes."
+        "These projections use a simple line fitted to **your** historical trend. "
+        "They are useful for seeing direction and pace, not as **guaranteed** outcomes."
     )
     # Specific explanation for compound lifts
     st.write(
         "For compound lifts, the dashboard estimates 1RM from your logged weight and reps, "
-        "then projects that trend forward."
+        "then projects that trend forward. Take everything with a grain of salt."
+        "**PLEASE DO NOT BE DISAPPOINTED IF THE e1RM ISN'T HIT BY THE PROJECTED TIME FRAME.**"
     )
+    st.write( 
+        "***Note***: The projections assume that your future rate of progress will be similar to your past. "
+        "**PLEASE DO NOT BE DISAPPOINTED IF THE e1RM ISN'T HIT BY THE PROJECTED TIME FRAME.**"
+        )
