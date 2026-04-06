@@ -507,8 +507,10 @@ st.markdown(
 
 # Set the main title of the app
 st.title("Gym Progress Dashboard ***PROJECT JAX***")
-# Subtitle describing the purpose of the dashboard
-st.caption("See your lifting, diet, and bodyweight trends together, with simple projections based on your historical rate of change.")
+# Subheader describing the purpose of the dashboard
+st.subheader("**See your lifting, diet, and bodyweight trends together, with simple projections "
+             "based on your historical rate of change.**",
+              divider = "green")
 
 # Sidebar layout for file uploads and settings
 with st.sidebar:
